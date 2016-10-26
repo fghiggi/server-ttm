@@ -1,10 +1,8 @@
-
-import com.sun.deploy.util.SessionState;
-
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.NoSuchElementException;
 
 /*
  * To change this license header, choose License Headers in Project Properties.
@@ -26,7 +24,9 @@ public class ClienteConectado implements Runnable{
     static final String ENVIO_MENSAGEM_PUCLICA = "$:->mensagem";
     static final String ENVIO_MENSAGEM_PRIVADA = "$:->privado";
     static final String ENVIO_SAIR_SALA = "$:->sair";
+    static final String ENVIO_ENTROU_SALA = "$:->entrou";
     static final String ENVIO_LISTA = "$:->usuario";
+    static final String RECEBE_STATUS = "$:->status";
 
     public ClienteConectado(Socket s) {
         this.s = s;
@@ -54,7 +54,7 @@ public class ClienteConectado implements Runnable{
             }
 
             if(msg.startsWith("/mensagem")){
-                enviaMensagemTodos(msg.split(" ")[1]);
+                enviaMensagemTodos(msg.substring(10));
             }
 
             if(msg.startsWith("/privado")){
@@ -107,9 +107,13 @@ public class ClienteConectado implements Runnable{
         //validar se o cara ta na lista depois
         String x[] = msg.split(" ");
 
-        ClienteConectado destino = Servidor.clientes.stream().filter(c -> c.apelido.equals(x[1])).findFirst().get();
+        try{
+            ClienteConectado destino = Servidor.clientes.stream().filter(c -> c.apelido.equals(x[1])).findFirst().get();
 
-        destino.enviarMensagem(ENVIO_MENSAGEM_PRIVADA + " " + destino.apelido + " " + x[2]);
+            destino.enviarMensagem(ENVIO_MENSAGEM_PRIVADA + " " + this.apelido + " " + x[2]);
+        } catch (NoSuchElementException ex){
+            enviarMensagem(RECEBE_STATUS + " " + "Usuario nao conectado");
+        }
     }
 
     private void enviaMensagemTodos(String msg){
@@ -134,6 +138,10 @@ public class ClienteConectado implements Runnable{
             }else{
                 this.apelido = nick;
                 enviarMensagem("Bem vindo" + this.apelido);
+
+                Servidor.clientes.forEach(c -> {
+                    c.enviarMensagem(ENVIO_ENTROU_SALA + " " + this.apelido);
+                });
 
                 Servidor.clientes.add(this);
 
