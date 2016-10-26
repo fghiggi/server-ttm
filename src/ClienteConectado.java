@@ -4,153 +4,141 @@ import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.NoSuchElementException;
 
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
-
 /**
- *
- * @author gabriel
+ * Created by slave00 on 26/10/16.
  */
 public class ClienteConectado implements Runnable{
-    Socket s;
-    PrintWriter out;
-    BufferedReader in;
-    Thread t;
-    String apelido;
-
-    static final String ENVIO_MENSAGEM_PUCLICA = "$:->mensagem";
-    static final String ENVIO_MENSAGEM_PRIVADA = "$:->privado";
-    static final String ENVIO_SAIR_SALA = "$:->sair";
-    static final String ENVIO_ENTROU_SALA = "$:->entrou";
-    static final String ENVIO_LISTA = "$:->usuario";
-    static final String RECEBE_STATUS = "$:->status";
+    private Socket socket;
+    private PrintWriter output;
+    private BufferedReader input;
+    private Thread thread;
+    private String apelido;
 
     public ClienteConectado(Socket s) {
-        this.s = s;
+        this.socket = s;
         setup();
         start();
         enviarMensagem("Informe seu apelido");
     }
 
     public void enviarMensagem(String msg){
-        System.out.println(msg);
-        out.println(msg);
-        out.flush();
+        output.println(msg);
+        output.flush();
+    }
+
+    public void enviarMensagemTodos(String msg){
+        Servidor.clientes.forEach(c -> {
+            c.enviarMensagem(msg);
+        });
     }
 
     public void receberMensagem(){
         try {
-            String msg = in.readLine();
+            String msg = input.readLine();
 
-            System.out.println(msg);
-
-            if(msg.startsWith("/lista")){
-                Servidor.clientes.forEach(c -> {
-                    enviaListaUsuarios(c);
-                });
-            }
-
-            if(msg.startsWith("/mensagem")){
-                enviaMensagemTodos(msg.substring(10));
-            }
-
-            if(msg.startsWith("/privado")){
-                enviaMensagemPrivada(msg);
-            }
-
-            if(msg.startsWith("/sair")){
-                Servidor.clientes.remove(this);
-
-                enviaSair();
-
-                Servidor.clientes.forEach(c -> {
-                    enviaListaUsuarios(c);
-                });
-
-                this.t.join();
-            }
+            verificarMensagem(msg);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
+    private  void verificarMensagem(String mensagem){
+        TipoMensagem tipo = Protocolo.parse(mensagem);
+
+        switch (tipo){
+            case LISTA: enviarListaUsuarios();
+                break;
+            case MENSAGEM: enviarMensagemPublica(mensagem);
+                break;
+            case PRIVADO: enviarMensagemPrivada(mensagem);
+                break;
+            case SAIR: enviarSair();
+                break;
+            case INVALIDA:
+                break;
+        }
+    }
+
     private void setup(){
         try {
-            in = new BufferedReader(new InputStreamReader(s.getInputStream()));
-            out = new PrintWriter(s.getOutputStream());
+            input = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            output = new PrintWriter(socket.getOutputStream());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private boolean verificarApelido(String apelido){
+        return Servidor.clientes.stream().anyMatch(c -> c.apelido.equals(apelido));
+    }
+
+    private void enviarListaUsuarios(){
+        Servidor.clientes.forEach(cli -> {
+            Servidor.clientes.forEach(c -> {
+                cli.enviarMensagem(String.format("%s %s",Protocolo.ENVIO_LISTA, c.apelido));
+            });
+        });
+    }
+
+    private void enviarMensagemPrivada(String msg){
+        String temp[] = msg.split(" ");
+
+        try{
+            ClienteConectado destino = Servidor.clientes.stream().filter(c -> c.apelido.equals(temp[1])).findFirst().get();
+
+            destino.enviarMensagem(String.format("%s %s %s", Protocolo.MENSAGEM_PRIVADA, this.apelido, temp[2]));
+        } catch (NoSuchElementException ex){
+            enviarMensagem(String.format("%s Usuário não conectado", Protocolo.RECEBE_STATUS));
+        }
+    }
+
+    private void enviarMensagemPublica(String msg){
+        enviarMensagemTodos(String.format("%s %s %s", Protocolo.MENSAGEM_PUCLICA, apelido, msg.substring(10)));
+    }
+
+    private void enviarSair(){
+        Servidor.clientes.remove(this);
+
+        enviarMensagemTodos(String.format("%s %s saiu da sala.", Protocolo.SAIU_SALA, this.apelido));
+
+        enviarListaUsuarios();
+
+        encerrar();
+    }
+
+    private void receberApelido() {
+        try {
+            String apelido = input.readLine();
+
+            if (verificarApelido(apelido)) {
+                enviarMensagem(String.format("Já existe um usuário com o apelido %s", apelido));
+            } else {
+                this.apelido = apelido;
+
+                enviarMensagem(String.format("Bem vindo %s", this.apelido));
+
+                enviarMensagemTodos(String.format("%s %s", Protocolo.ENTROU_SALA, this.apelido));
+
+                Servidor.clientes.add(this);
+
+                enviarListaUsuarios();
+            }
+        } catch (NullPointerException ex){
+            ex.printStackTrace();
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
     private void start(){
-        t = new Thread(this);
-        t.start();
+        thread = new Thread(this);
+        thread.start();
     }
 
-    private boolean verificaNick(String nick){
-        return Servidor.clientes.stream().anyMatch(c -> c.apelido.equals(nick));
-    }
-
-    private void enviaListaUsuarios(ClienteConectado cli){
-        for(ClienteConectado c:Servidor.clientes){
-            System.out.println("enviando" + c.apelido);
-            cli.enviarMensagem(ENVIO_LISTA + " " + c.apelido);
-        }
-    }
-
-    private void enviaMensagemPrivada(String msg){
-        System.out.println("ta enviando privado");
-        //validar se o cara ta na lista depois
-        String x[] = msg.split(" ");
-
-        try{
-            ClienteConectado destino = Servidor.clientes.stream().filter(c -> c.apelido.equals(x[1])).findFirst().get();
-
-            destino.enviarMensagem(ENVIO_MENSAGEM_PRIVADA + " " + this.apelido + " " + x[2]);
-        } catch (NoSuchElementException ex){
-            enviarMensagem(RECEBE_STATUS + " " + "Usuario nao conectado");
-        }
-    }
-
-    private void enviaMensagemTodos(String msg){
-        for(ClienteConectado c:Servidor.clientes){
-            System.out.println(c.apelido);
-            c.enviarMensagem(ENVIO_MENSAGEM_PUCLICA + " " + apelido + " " + msg);
-        }
-    }
-
-    private void enviaSair(){
-        for(ClienteConectado c:Servidor.clientes){
-
-            c.enviarMensagem(ENVIO_SAIR_SALA + " " + this.apelido + " saiu da sala.");
-        }
-    }
-
-    private void recebeApelido(){
+    private void encerrar(){
         try {
-            String nick = in.readLine();
-            if(verificaNick(nick)){
-                enviarMensagem("Tem gente com esse nickj");
-            }else{
-                this.apelido = nick;
-                enviarMensagem("Bem vindo" + this.apelido);
-
-                Servidor.clientes.forEach(c -> {
-                    c.enviarMensagem(ENVIO_ENTROU_SALA + " " + this.apelido);
-                });
-
-                Servidor.clientes.add(this);
-
-                Servidor.clientes.forEach(c -> {
-                    enviaListaUsuarios(c);
-                });
-            }
-
-        } catch (Exception e) {
+            this.thread.join();
+        } catch (InterruptedException e) {
             e.printStackTrace();
         }
     }
@@ -159,7 +147,7 @@ public class ClienteConectado implements Runnable{
     public void run() {
         while(true){
             if(apelido == null)
-                recebeApelido();
+                receberApelido();
             else
                 receberMensagem();
         }
