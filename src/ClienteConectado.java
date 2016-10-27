@@ -47,7 +47,7 @@ public class ClienteConectado implements Runnable{
     }
 
     private  void verificarMensagem(String mensagem){
-        MensagemCliente tipo = Protocolo.parse(mensagem);
+        MensagemCliente tipo = Protocolo.parseMensagemClient(mensagem);
 
         switch (tipo){
             case LISTA: enviarListaUsuarios();
