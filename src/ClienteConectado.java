@@ -1,3 +1,7 @@
+import com.feevale.protocolo.MensagemCliente;
+import com.feevale.protocolo.MensagemServer;
+import com.feevale.protocolo.Protocolo;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
@@ -43,7 +47,7 @@ public class ClienteConectado implements Runnable{
     }
 
     private  void verificarMensagem(String mensagem){
-        TipoMensagem tipo = Protocolo.parse(mensagem);
+        MensagemCliente tipo = Protocolo.parse(mensagem);
 
         switch (tipo){
             case LISTA: enviarListaUsuarios();
@@ -75,7 +79,7 @@ public class ClienteConectado implements Runnable{
     private void enviarListaUsuarios(){
         Servidor.clientes.forEach(cli -> {
             Servidor.clientes.forEach(c -> {
-                cli.enviarMensagem(String.format("%s %s",Protocolo.ENVIO_LISTA, c.apelido));
+                cli.enviarMensagem(String.format("%s %s",MensagemServer.ENVIO_LISTA.mensagem, c.apelido));
             });
         });
     }
@@ -86,20 +90,20 @@ public class ClienteConectado implements Runnable{
         try{
             ClienteConectado destino = Servidor.clientes.stream().filter(c -> c.apelido.equals(temp[1])).findFirst().get();
 
-            destino.enviarMensagem(String.format("%s %s %s", Protocolo.MENSAGEM_PRIVADA, this.apelido, temp[2]));
+            destino.enviarMensagem(String.format("%s %s %s", MensagemServer.MENSAGEM_PRIVADA.mensagem, this.apelido, temp[2]));
         } catch (NoSuchElementException ex){
-            enviarMensagem(String.format("%s Usuário não conectado", Protocolo.RECEBE_STATUS));
+            enviarMensagem(String.format("%s Usuário não conectado", MensagemServer.RECEBE_STATUS.mensagem));
         }
     }
 
     private void enviarMensagemPublica(String msg){
-        enviarMensagemTodos(String.format("%s %s %s", Protocolo.MENSAGEM_PUCLICA, apelido, msg.substring(10)));
+        enviarMensagemTodos(String.format("%s %s %s", MensagemServer.MENSAGEM_PUCLICA.mensagem, apelido, msg.substring(10)));
     }
 
     private void enviarSair(){
         Servidor.clientes.remove(this);
 
-        enviarMensagemTodos(String.format("%s %s saiu da sala.", Protocolo.SAIU_SALA, this.apelido));
+        enviarMensagemTodos(String.format("%s %s saiu da sala.", MensagemServer.SAIU_SALA.mensagem, this.apelido));
 
         enviarListaUsuarios();
 
@@ -117,7 +121,7 @@ public class ClienteConectado implements Runnable{
 
                 enviarMensagem(String.format("Bem vindo %s", this.apelido));
 
-                enviarMensagemTodos(String.format("%s %s", Protocolo.ENTROU_SALA, this.apelido));
+                enviarMensagemTodos(String.format("%s %s", MensagemServer.ENTROU_SALA.mensagem, this.apelido));
 
                 Servidor.clientes.add(this);
 
